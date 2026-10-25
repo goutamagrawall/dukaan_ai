@@ -7,7 +7,17 @@ async function sarvam(path: string, init: RequestInit) {
   if(!key) throw new Error("Sarvam is not connected yet. Add SARVAM_API_KEY to the backend environment. You can record transactions manually in the meantime.");
   let response:Response;
   try{response=await fetch(`https://api.sarvam.ai${path}`,{...init,headers:{...init.headers,"api-subscription-key":key},signal:AbortSignal.timeout(45000)});}catch{throw new Error("Sarvam took too long to respond. Please try again.");}
-  if(!response.ok) { if(response.status===401||response.status===403) throw new Error("Sarvam API key was rejected. Check your backend configuration."); if(response.status===429) throw new Error("Sarvam usage limit reached. Try again shortly or use manual entry."); throw new Error(`Sarvam could not process this request (${response.status}). Please try again or use manual entry.`); }
+  if(!response.ok) {
+    const stage=path==="/speech-to-text"?"Speech recognition":"Transaction understanding";
+    const payload=await response.json().catch(()=>({})) as any;
+    const candidate=payload.error?.message||payload.message||(typeof payload.detail==="string"?payload.detail:"");
+    const detail=typeof candidate==="string"?candidate.replaceAll(key,"[redacted]").replace(/\s+/g," ").slice(0,220):"";
+    console.warn("sarvam_request_failed",JSON.stringify({stage,status:response.status,code:payload.error?.code||payload.code||null}));
+    if(response.status===401||response.status===403)throw new Error("Sarvam authentication failed. The shop owner needs to check the backend API key.");
+    if(response.status===429)throw new Error("Sarvam usage limit reached. Try again shortly or use manual entry.");
+    if(/credit|balance|billing|quota/i.test(detail))throw new Error("Sarvam credits are unavailable. The shop owner needs to check the Sarvam account balance; manual entry is still available.");
+    throw new Error(`${stage} failed (${response.status}). ${detail||"Please retry with a short, clear recording or use manual entry."}`);
+  }
   return response.json() as Promise<any>;
 }
 async function POST(request:Request) {
@@ -17,8 +27,8 @@ async function POST(request:Request) {
     if(request.headers.get("content-type")?.includes("multipart/form-data")) {
       const form=await request.formData(); const audio=form.get("file");
       if(!(audio instanceof File)||audio.size===0||audio.size>8*1024*1024) throw new Error("Record an audio clip up to 28 seconds (maximum 8 MB).");
-      const upstream=new FormData();upstream.set("file",audio);upstream.set("model","saaras:v3");upstream.set("mode","transcribe");
-      const lang=String(form.get("language")||""); if(lang&&lang!=="auto") upstream.set("language_code",lang);
+      const upstream=new FormData();const audioType=audio.type.split(";")[0].trim().toLowerCase();const cleanAudio=new File([audio],audio.name,{type:audioType||"audio/wav"});upstream.set("file",cleanAudio);upstream.set("model","saaras:v3");upstream.set("mode","transcribe");
+      const lang=String(form.get("language")||""); upstream.set("language_code",lang&&lang!=="auto"?(lang==="or-IN"?"od-IN":lang):"unknown");
       const result=await sarvam("/speech-to-text",{method:"POST",body:upstream});text=result.transcript||"";language=result.language_code||"unknown";
       if(!text.trim()) throw new Error("No speech detected. Please move closer to your microphone and try again.");
     } else {const body=await request.json() as any;text=String(body.text||"").trim();}
@@ -36,3 +46,5 @@ async function POST(request:Request) {
 }
 
 return POST(request); }
+
+

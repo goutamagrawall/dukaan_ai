@@ -10,6 +10,7 @@ Both frontends open without login. Each browser gets its own private workspace. 
 ## Features
 
 - Sarvam Saaras v3 speech recognition and Sarvam-105B structured understanding.
+- Browser recordings are decoded, downmixed and resampled to mono 16 kHz WAV before upload; audio-file upload is available if microphone permissions are unavailable.
 - Hindi, Hinglish, English and other supported Indian languages; up to 28 seconds per recording.
 - Editable confirmation for sales, purchases, expenses, credit and collections.
 - Automatic quantity × unit-price calculations in integer paise.
@@ -82,3 +83,4 @@ The trusted service tests (`npm run test:api`) require an ignored `.dev.vars` co
 Credit sales count as revenue when recorded. Collections reduce debt and never count as another sale. Estimated profit uses known sale-item costs minus operating expenses; unknown costs are excluded and coverage is shown. Inventory purchases are tracked separately. GST invoices, returns, supplier credit, automatic inventory reconciliation, payment processing and offline synchronization are outside this MVP.
 
 Dates use Asia/Kolkata. Submitted text/audio is processed by Sarvam; this app does not retain raw audio. Conversation history lasts only in the current page session. Confirmed records persist in Supabase.
+
