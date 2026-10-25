@@ -8,7 +8,7 @@ const owner='qa:dukaan-smoke:'+crypto.randomUUID();
 const headers={'Content-Type':'application/json','x-dukaan-token':token,'x-dukaan-user':owner,'x-dukaan-route':'state'};
 async function call(route,body){const r=await fetch(base,{headers:{...headers,'x-dukaan-route':route},method:body?'POST':'GET',body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()};}
 const initial=await call('state');assert.equal(initial.status,200,JSON.stringify(initial.data));assert.equal(initial.data.sarvamReady,true);assert.equal(initial.data.shop.demo,true);
-assert.equal((await fetch(base)).status,401);
+assert.ok([401,403].includes((await fetch(base)).status));
 console.log('PASS: isolated QA workspace initialized; unauthenticated backend requests rejected');
 const parsed=await call('assistant',{text:'रमेश को दो किलो चावल साठ रुपये किलो और एक लीटर तेल एक सौ पचास रुपये, उधार।'});
 assert.equal(parsed.status,200,JSON.stringify(parsed.data));assert.equal(parsed.data.intent,'transaction');assert.equal(parsed.data.transaction.total,27000);assert.equal(parsed.data.transaction.paid,0);assert.equal(parsed.data.transaction.items.length,2);
@@ -35,3 +35,4 @@ try {
  await call('state',{action:'delete',id:paymentId});await call('state',{action:'delete',id});assert.equal((await call('state')).data.transactions.length,0);
 }
 console.log('All Supabase smoke checks passed. Only the dedicated qa: workspace was changed; its QA transactions were removed.');
+

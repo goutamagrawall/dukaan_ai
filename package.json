@@ -14,7 +14,10 @@
     "db:generate": "drizzle-kit generate",
     "test": "node --test --experimental-strip-types scripts/business.test.ts",
     "typecheck": "tsc --noEmit",
-    "test:api": "node scripts/smoke-test.mjs"
+    "test:api": "node scripts/smoke-test.mjs",
+    "build:pages": "vite build --config vite.pages.config.ts",
+    "dev:pages": "vite --config vite.pages.config.ts",
+    "preview:pages": "vite preview --config vite.pages.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

@@ -2,64 +2,83 @@
 
 A multilingual voice-first business assistant for Indian shopkeepers.
 
-Live frontend: https://dukaan-ai-shopkeeper.geethanshr.chatgpt.site
+- GitHub Pages: https://goutamagrawall.github.io/dukaan_ai/
+- ChatGPT Sites: https://dukaan-ai-shopkeeper.geethanshr.chatgpt.site
+
+Both frontends open without login. Each browser gets its own private workspace. Data is stored in Supabase; an opaque workspace credential stays in that browser. The two website origins use separate workspaces. Clearing browser storage or switching devices removes access to the old workspace, so export records regularly. This MVP has no account recovery or cross-device synchronization.
 
 ## Features
 
 - Sarvam Saaras v3 speech recognition and Sarvam-105B structured understanding.
 - Hindi, Hinglish, English and other supported Indian languages; up to 28 seconds per recording.
 - Editable confirmation for sales, purchases, expenses, credit and collections.
-- Itemized calculations in integer paise; cash, UPI, partial payments and udhaar.
-- Customer ledgers, transaction edits, receipts, PDF printing, text downloads, sharing and CSV exports.
+- Automatic quantity × unit-price calculations in integer paise.
+- Cash, UPI, partial payments, customer udhaar and debt collections.
+- Itemized receipts: print / save as PDF, text downloads, sharing and CSV exports.
 - Daily dashboard, sales charts, cost-aware profit estimates and voice/text business questions.
 - Clearly labeled sample workspace and fresh-start onboarding.
-- Responsive layouts, keyboard navigation, dialog focus trapping and reduced motion.
+- Mobile layouts, keyboard navigation, dialog focus trapping and reduced motion.
 
 ## Architecture
 
-Browser → ChatGPT Sites frontend → authenticated Sites proxy → Supabase Edge Function → Postgres / Sarvam.
+Browser → Supabase `dukaan-api` Edge Function → Postgres / Sarvam.
 
-Backend project: `sarvam-ai-backend` (Mumbai / ap-south-1).
+The same React interface builds for GitHub Pages as static HTML, CSS and JavaScript, and for ChatGPT Sites using Vinext. GitHub Pages has no server-side API. All sensitive operations run in Supabase.
 
-Sites supplies authenticated user identity. Its server forwards that identity with a private service token. The Edge Function verifies the token before each operation. It uses the platform-provided Supabase service role internally. Both business tables have row-level security enabled, with direct access revoked for anonymous and authenticated API roles. Mutations scope every operation by owner and use per-owner Postgres advisory locks to prevent concurrent overcollection.
+The browser receives a cryptographically random 256-bit workspace credential, stores it locally, and sends it only to the backend over HTTPS. Supabase stores only its SHA-256 hash and derives the record owner from that verified credential. Clients cannot choose or change their owner. New sessions, AI calls and writes have server-side usage limits. CORS restricts browser requests to the two published origins and local previews.
 
-The Sarvam key and service token are encrypted in Supabase Vault. Only a service-role-only function can read them. Neither is returned to the browser or committed to Git. The Edge Function authenticates service calls itself; platform JWT verification is disabled for this endpoint.
+Business and session tables have row-level security enabled, with direct access revoked for anonymous and authenticated API roles. The service-only mutation function scopes operations by owner and uses per-owner advisory locks to prevent concurrent overcollection. The Sarvam API key and trusted server connection token are encrypted in Supabase Vault. Neither secret appears in frontend assets or Git.
 
-## Local development
+The original authenticated Sites proxy remains available to trusted server clients; public browsers use their private workspace credential instead.
+
+## Run locally
 
 Node >=22.13 required; Node 24 recommended.
 
 ```sh
 npm ci
-cp .env.example .dev.vars
-# Add your backend URL and private service token locally.
-npm run dev
+npm run dev:pages
 ```
 
-The local Sites mock sign-in isolates development under the `local_seedy` owner. Hosted users use ChatGPT Sites sign-in. Do not put secrets in frontend environment variables.
+Open the printed URL ending in `/dukaan_ai/`. No secrets are required for frontend development against the configured backend. Microphone recording works on HTTPS or localhost after the user grants microphone permission.
 
-## Supabase deployment
+## Build / deploy
 
-1. Apply `supabase/migrations/202610250001_dukaan.sql` to a new project.
-2. In Supabase Vault, create `dukaan_sarvam_api_key` and a random `dukaan_backend_token`.
-3. Deploy `supabase/functions/dukaan-api` with `verify_jwt=false`. The function does its own token verification.
-4. Configure `DUKAAN_BACKEND_URL` and secret `DUKAAN_BACKEND_TOKEN` in the Sites runtime environment and redeploy.
+```sh
+npm run build:pages
+```
 
-The Edge Function uses `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, supplied by Supabase. Keep `supabase/functions/dukaan-api/business.ts` identical to `lib/business.ts` when changing calculation rules.
+This writes the static frontend to `docs/`. GitHub Pages serves `main` → `/docs`; push a fresh build to update the public link. `vite.pages.config.ts` configures the repository base path.
+
+```sh
+npm run build
+```
+
+This builds the ChatGPT Sites version. Its public access setting is managed in Sites, separately from source deployment.
+
+For a new Supabase project:
+
+1. Apply the checked-in migrations in `supabase/migrations/` in order.
+2. In Vault, create `dukaan_sarvam_api_key` and a random `dukaan_backend_token`.
+3. Deploy `supabase/functions/dukaan-api` with `verify_jwt=false`; it validates browser and service credentials itself.
+4. Update the public backend URL in `lib/client-api.ts` and the origin allowlist in `browser-auth.ts`.
+
+The function uses the platform-provided `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. Keep `supabase/functions/dukaan-api/business.ts` identical to `lib/business.ts` when changing calculation rules.
 
 ## Validation
 
 ```sh
 npm run typecheck
 npm test
-npm run build
-npm run test:api
+node scripts/public-smoke-test.mjs
 ```
 
-API tests call the deployed backend using a new dedicated `qa:dukaan-smoke:<uuid>` workspace on every run. They never modify a real shop. They validate Hindi/Hinglish understanding, server calculations, persistence, partial credit, collections, idempotency, concurrency and protected deletion, and then remove their own test transactions. Sarvam API calls consume a small amount of API usage.
+The public smoke test creates fresh isolated browser sessions, verifies token validation and cross-workspace privacy, creates then removes its own QA transaction, and does not touch an existing shop. `--voice` additionally generates and transcribes a short Hindi fixture; it needs a temporary `SARVAM_TEST_API_KEY` environment variable. AI calls use Sarvam credits.
+
+The trusted service tests (`npm run test:api`) require an ignored `.dev.vars` configuration and use a separate `qa:` owner. They cover persistence, calculations, idempotency, partial credit, collections, concurrent overcollection and protected deletion.
 
 ## Accounting scope
 
-Credit sales count as revenue when recorded. Collections reduce debt and never count as another sale. Estimated profit uses known sale-item costs minus operating expenses; missing costs are excluded and coverage is shown. Inventory purchases are tracked separately. This MVP does not include GST invoices, returns, supplier credit, automatic inventory reconciliation, payment processing or offline synchronization.
+Credit sales count as revenue when recorded. Collections reduce debt and never count as another sale. Estimated profit uses known sale-item costs minus operating expenses; unknown costs are excluded and coverage is shown. Inventory purchases are tracked separately. GST invoices, returns, supplier credit, automatic inventory reconciliation, payment processing and offline synchronization are outside this MVP.
 
-Dates use Asia/Kolkata. Submitted text/audio is processed by Sarvam; the app does not retain raw audio. Chat history lasts only in the current page session. Confirmed records persist in Supabase.
+Dates use Asia/Kolkata. Submitted text/audio is processed by Sarvam; this app does not retain raw audio. Conversation history lasts only in the current page session. Confirmed records persist in Supabase.
