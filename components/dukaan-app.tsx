@@ -57,13 +57,21 @@ export default function DukaanApp() {
     setVoiceError("");setPreparingAudio(true);
     try{
       const wav=await normalizeRecording(blob);
-      const form=new FormData();form.append("file",wav,"recording.wav");form.append("language",language);
+      const isWav=wav.type.includes("wav");
+      const ext=isWav?"wav":blob.type.includes("mp4")?"m4a":blob.type.includes("ogg")?"ogg":"webm";
+      const form=new FormData();form.append("file",wav,`recording.${ext}`);form.append("language",language);
       setPreparingAudio(false);await handleAssistant(form);
     }catch(e){const message=(e as Error).message;setVoiceError(message);setToast(message);setView("assistant");}
     finally{setPreparingAudio(false);}
   }
   async function toggleRecording(){
-    if(recording){if(recorder.current?.state==="recording")recorder.current.stop();return;}
+    if(recording){
+      if(recorder.current?.state==="recording"){
+        try{recorder.current.requestData();}catch{}
+        recorder.current.stop();
+      }
+      return;
+    }
     if(micStarting||busy||preparingAudio)return;
     setVoiceError("");
     if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==="undefined"){setVoiceError("Microphone recording is unavailable in this browser. Open this HTTPS link in Chrome, Edge or Safari, or upload an audio file below.");setView("assistant");return;}
@@ -71,15 +79,18 @@ export default function DukaanApp() {
     setMicStarting(true);
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,channelCount:1}});streamRef.current=stream;cancelRecording.current=false;
-      const mime=["audio/webm;codecs=opus","audio/mp4","audio/ogg;codecs=opus"].find(m=>MediaRecorder.isTypeSupported(m));
+      const mime=["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg;codecs=opus"].find(m=>MediaRecorder.isTypeSupported(m));
       const rec=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);recorder.current=rec;const chunks:BlobPart[]=[];
       rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
       rec.onstop=()=>{
         stream.getTracks().forEach(t=>t.stop());streamRef.current=null;if(stopTimer.current)clearTimeout(stopTimer.current);if(intervalRef.current)clearInterval(intervalRef.current);setRecording(false);
-        if(!cancelRecording.current)processRecording(new Blob(chunks,{type:rec.mimeType||mime||"audio/webm"}));
+        if(!cancelRecording.current){
+          const blobType=rec.mimeType||mime||"audio/webm";
+          processRecording(new Blob(chunks,{type:blobType}));
+        }
       };
       rec.onerror=()=>{cancelRecording.current=true;if(rec.state!=="inactive")rec.stop();stream.getTracks().forEach(t=>t.stop());setRecording(false);setVoiceError("The browser could not record audio. Check your microphone or upload an audio file.");};
-      rec.start(250);setRecording(true);setSeconds(0);intervalRef.current=setInterval(()=>setSeconds(s=>s+1),1000);stopTimer.current=setTimeout(()=>{if(rec.state==="recording")rec.stop()},28000);
+      rec.start(250);setRecording(true);setSeconds(0);intervalRef.current=setInterval(()=>setSeconds(s=>s+1),1000);stopTimer.current=setTimeout(()=>{if(rec.state==="recording"){try{rec.requestData();}catch{}rec.stop();}},28000);
     }catch(e){
       streamRef.current?.getTracks().forEach(t=>t.stop());setRecording(false);
       const name=(e as Error).name;
