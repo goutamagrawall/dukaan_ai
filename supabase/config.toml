@@ -1,0 +1,2 @@
+[functions.dukaan-api]
+verify_jwt = false

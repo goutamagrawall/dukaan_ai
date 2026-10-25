@@ -1,0 +1,9 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {validateDraft,itemTotal,ledger,summary,indiaDay,answerQuestion} from '../lib/business.ts';
+const sale={kind:'sale',customer:'Ramesh',items:[{name:'Rice',qty:2.5,unit:'kg',rate:6035,cost:4000}],paid:5000,method:'cash',note:''};
+test('fractional quantities are rounded per line in integer paise',()=>{assert.equal(itemTotal(sale.items),15088);assert.equal(validateDraft({...sale,total:999}).total,15088)});
+test('rejects overpayments, missing customer, invalid quantities and negative prices',()=>{for(const patch of [{paid:20000},{customer:''},{items:[{...sale.items[0],qty:-1}]},{items:[{...sale.items[0],rate:-5}]}])assert.throws(()=>validateDraft({...sale,...patch}));});
+test('collections reduce debt without increasing sales or profit',()=>{const s={...validateDraft(sale),id:'s',date:new Date().toISOString()};const p={...s,id:'p',kind:'payment',items:[{name:'Collection',qty:1,unit:'pcs',rate:3000,cost:null}],total:3000,paid:3000};const stats=summary([s,p]);assert.equal(ledger([s,p])[0].balance,7088);assert.equal(stats.sales,15088);assert.equal(stats.profit,5088);assert.equal(stats.collected,8000);});
+test('unknown costs do not invent profit and inventory purchases are separate',()=>{const s={...validateDraft({...sale,items:[{...sale.items[0],cost:null}]}),id:'s',date:new Date().toISOString()};const purchase={...s,id:'p',kind:'purchase',paid:s.total};assert.equal(summary([s,purchase]).knownItems,0);assert.equal(summary([s,purchase]).profit,0);});
+test('customer case matching and India midnight boundaries',()=>{assert.equal(indiaDay(new Date('2026-10-24T18:30:00Z')),'2026-10-25');assert.equal(indiaDay(new Date('2026-10-24T18:29:59Z')),'2026-10-24');const s={...validateDraft(sale),id:'s',date:new Date().toISOString()};assert.match(answerQuestion('credit','ramesh','today',[s]),/100.88/);});
